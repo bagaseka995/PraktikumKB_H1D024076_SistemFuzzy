@@ -1,0 +1,600 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>FuzzyLight — Sistem Lampu Lalu Lintas Cerdas</title>
+    <link href="https://fonts.googleapis.com/css2?family=Space+Mono:wght@400;700&family=DM+Sans:opsz,wght@9..40,300;9..40,400;9..40,500;9..40,600;9..40,700&display=swap" rel="stylesheet">
+    <style>
+        :root {
+            --bg: #0d0f14;
+            --surface: #161921;
+            --surface2: #1d2130;
+            --border: #262b3a;
+            --text: #e8ecf5;
+            --text-muted: #5a6278;
+            --text-dim: #3a4258;
+            --green: #22c55e;
+            --green-glow: rgba(34,197,94,0.2);
+            --yellow: #eab308;
+            --yellow-glow: rgba(234,179,8,0.2);
+            --red: #ef4444;
+            --red-glow: rgba(239,68,68,0.2);
+            --blue: #3b82f6;
+            --blue-dim: rgba(59,130,246,0.1);
+            --radius: 14px;
+        }
+
+        *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+        body {
+            background: var(--bg);
+            color: var(--text);
+            font-family: 'DM Sans', sans-serif;
+            min-height: 100vh;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            padding: 40px 20px 60px;
+        }
+
+        /* ── Noise texture overlay ── */
+        body::before {
+            content: '';
+            position: fixed;
+            inset: 0;
+            background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noise'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23noise)' opacity='0.03'/%3E%3C/svg%3E");
+            pointer-events: none;
+            z-index: 0;
+        }
+
+        .page { position: relative; z-index: 1; width: 100%; max-width: 520px; }
+
+        /* ── Header ── */
+        .header {
+            text-align: center;
+            margin-bottom: 36px;
+        }
+
+        .logo-row {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 10px;
+            margin-bottom: 14px;
+        }
+
+        .traffic-light-icon {
+            display: flex;
+            flex-direction: column;
+            gap: 3px;
+            background: #1a1e2a;
+            padding: 7px 6px;
+            border-radius: 20px;
+            border: 1px solid var(--border);
+        }
+
+        .tl-dot {
+            width: 8px; height: 8px;
+            border-radius: 50%;
+        }
+
+        .tl-dot.r { background: var(--red); box-shadow: 0 0 6px var(--red); }
+        .tl-dot.y { background: var(--yellow); box-shadow: 0 0 6px var(--yellow); }
+        .tl-dot.g { background: var(--green); box-shadow: 0 0 6px var(--green); }
+
+        .header h1 {
+            font-family: 'Space Mono', monospace;
+            font-size: 1.4rem;
+            font-weight: 700;
+            letter-spacing: -0.5px;
+            color: var(--text);
+        }
+
+        .header h1 span { color: var(--green); }
+
+        .header-sub {
+            font-size: 0.82rem;
+            color: var(--text-muted);
+            letter-spacing: 0.3px;
+        }
+
+        .badge-fuzzy {
+            display: inline-flex;
+            align-items: center;
+            gap: 5px;
+            margin-top: 10px;
+            background: var(--blue-dim);
+            border: 1px solid rgba(59,130,246,0.2);
+            color: #93c5fd;
+            font-size: 0.7rem;
+            font-weight: 600;
+            padding: 3px 10px;
+            border-radius: 20px;
+            letter-spacing: 0.8px;
+            text-transform: uppercase;
+        }
+
+        /* ── Main card ── */
+        .card {
+            background: var(--surface);
+            border: 1px solid var(--border);
+            border-radius: var(--radius);
+            padding: 28px;
+            margin-bottom: 16px;
+        }
+
+        .card-label {
+            font-size: 0.67rem;
+            font-weight: 700;
+            letter-spacing: 1.5px;
+            text-transform: uppercase;
+            color: var(--text-dim);
+            margin-bottom: 20px;
+        }
+
+        /* ── Slider input group ── */
+        .input-group {
+            margin-bottom: 24px;
+        }
+
+        .input-group:last-child { margin-bottom: 0; }
+
+        .input-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: baseline;
+            margin-bottom: 10px;
+        }
+
+        .input-label {
+            font-size: 0.875rem;
+            font-weight: 600;
+            color: var(--text);
+        }
+
+        .input-value {
+            font-family: 'Space Mono', monospace;
+            font-size: 0.875rem;
+            font-weight: 700;
+            color: var(--green);
+            background: rgba(34,197,94,0.08);
+            padding: 2px 10px;
+            border-radius: 6px;
+            min-width: 56px;
+            text-align: right;
+            border: 1px solid rgba(34,197,94,0.15);
+            transition: color 0.2s;
+        }
+
+        .input-desc {
+            font-size: 0.75rem;
+            color: var(--text-muted);
+            margin-bottom: 12px;
+        }
+
+        /* Range slider */
+        input[type=range] {
+            -webkit-appearance: none;
+            width: 100%;
+            height: 4px;
+            background: var(--border);
+            border-radius: 4px;
+            outline: none;
+            cursor: pointer;
+        }
+
+        input[type=range]::-webkit-slider-thumb {
+            -webkit-appearance: none;
+            width: 18px; height: 18px;
+            background: var(--green);
+            border-radius: 50%;
+            border: 2px solid var(--bg);
+            box-shadow: 0 0 8px var(--green-glow);
+            transition: transform 0.15s;
+        }
+
+        input[type=range]::-webkit-slider-thumb:hover { transform: scale(1.2); }
+
+        input[type=range]::-moz-range-thumb {
+            width: 18px; height: 18px;
+            background: var(--green);
+            border-radius: 50%;
+            border: 2px solid var(--bg);
+        }
+
+        /* Track fill via JS */
+        .slider-track {
+            position: relative;
+            margin-bottom: 6px;
+        }
+
+        .range-labels {
+            display: flex;
+            justify-content: space-between;
+            font-size: 0.68rem;
+            color: var(--text-dim);
+            margin-top: 5px;
+            font-family: 'Space Mono', monospace;
+        }
+
+        /* hidden number input */
+        input[type=number] { display: none; }
+
+        /* ── Status chips ── */
+        .status-chips {
+            display: flex;
+            gap: 6px;
+            margin-top: 10px;
+        }
+
+        .chip {
+            flex: 1;
+            text-align: center;
+            padding: 5px 0;
+            border-radius: 8px;
+            font-size: 0.68rem;
+            font-weight: 700;
+            letter-spacing: 0.3px;
+            border: 1px solid transparent;
+            transition: all 0.2s;
+        }
+
+        .chip.inactive {
+            background: var(--surface2);
+            color: var(--text-dim);
+            border-color: var(--border);
+        }
+
+        /* Kepadatan chips */
+        .chip.sepi.active   { background: rgba(34,197,94,0.1);  color: var(--green);  border-color: rgba(34,197,94,0.3); }
+        .chip.normal.active { background: rgba(234,179,8,0.1);  color: var(--yellow); border-color: rgba(234,179,8,0.3); }
+        .chip.ramai.active  { background: rgba(239,68,68,0.1);  color: var(--red);    border-color: rgba(239,68,68,0.3); }
+
+        /* Antrean chips */
+        .chip.pendek.active  { background: rgba(34,197,94,0.1);  color: var(--green);  border-color: rgba(34,197,94,0.3); }
+        .chip.sedang2.active { background: rgba(234,179,8,0.1);  color: var(--yellow); border-color: rgba(234,179,8,0.3); }
+        .chip.panjang.active { background: rgba(239,68,68,0.1);  color: var(--red);    border-color: rgba(239,68,68,0.3); }
+
+        /* ── Submit button ── */
+        .btn-submit {
+            width: 100%;
+            padding: 14px;
+            background: var(--green);
+            color: #0a1a0f;
+            border: none;
+            border-radius: 12px;
+            font-family: 'DM Sans', sans-serif;
+            font-size: 0.9rem;
+            font-weight: 700;
+            cursor: pointer;
+            transition: all 0.2s;
+            letter-spacing: -0.1px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 8px;
+            margin-bottom: 16px;
+        }
+
+        .btn-submit:hover {
+            background: #16a34a;
+            transform: translateY(-1px);
+            box-shadow: 0 6px 20px rgba(34,197,94,0.25);
+        }
+
+        .btn-submit:active { transform: translateY(0); }
+
+        /* ── Result card ── */
+        .result-card {
+            background: var(--surface);
+            border: 1px solid var(--border);
+            border-radius: var(--radius);
+            padding: 28px;
+            display: none;
+            animation: popIn 0.4s cubic-bezier(0.34, 1.56, 0.64, 1);
+        }
+
+        .result-card.show { display: block; }
+
+        @keyframes popIn {
+            from { opacity: 0; transform: scale(0.95) translateY(10px); }
+            to { opacity: 1; transform: scale(1) translateY(0); }
+        }
+
+        {% if hasil is not none %}
+        .result-card { display: block; }
+        {% endif %}
+
+        .result-top {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            margin-bottom: 24px;
+        }
+
+        .result-label-text {
+            font-size: 0.7rem;
+            font-weight: 700;
+            letter-spacing: 1.5px;
+            text-transform: uppercase;
+            color: var(--text-dim);
+        }
+
+        .result-tag {
+            font-size: 0.7rem;
+            font-weight: 700;
+            padding: 3px 10px;
+            border-radius: 20px;
+            letter-spacing: 0.5px;
+        }
+
+        .result-main {
+            display: flex;
+            align-items: flex-end;
+            gap: 10px;
+            margin-bottom: 20px;
+        }
+
+        .result-number {
+            font-family: 'Space Mono', monospace;
+            font-size: 5rem;
+            font-weight: 700;
+            line-height: 1;
+            letter-spacing: -2px;
+        }
+
+        .result-unit {
+            font-size: 1.1rem;
+            font-weight: 600;
+            color: var(--text-muted);
+            margin-bottom: 8px;
+        }
+
+        /* Traffic light visual */
+        .tl-visual {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 8px;
+            background: #0f1117;
+            border: 1px solid var(--border);
+            border-radius: 24px;
+            padding: 14px 10px;
+        }
+
+        .tl-big {
+            width: 28px; height: 28px;
+            border-radius: 50%;
+            transition: all 0.4s;
+        }
+
+        .tl-big.off { background: #1a1e2a; box-shadow: none; }
+        .tl-big.on-red    { background: var(--red);    box-shadow: 0 0 16px var(--red), 0 0 30px var(--red-glow); }
+        .tl-big.on-yellow { background: var(--yellow); box-shadow: 0 0 16px var(--yellow), 0 0 30px var(--yellow-glow); }
+        .tl-big.on-green  { background: var(--green);  box-shadow: 0 0 16px var(--green), 0 0 30px var(--green-glow); }
+
+        /* Duration bar */
+        .duration-bar-track {
+            height: 6px;
+            background: var(--border);
+            border-radius: 6px;
+            overflow: hidden;
+            margin-bottom: 10px;
+        }
+
+        .duration-bar-fill {
+            height: 100%;
+            border-radius: 6px;
+            transition: width 0.8s ease;
+        }
+
+        .result-meta {
+            font-size: 0.78rem;
+            color: var(--text-muted);
+        }
+
+        .result-meta span {
+            font-family: 'Space Mono', monospace;
+            color: var(--text);
+            font-size: 0.75rem;
+        }
+
+        /* ── Footer ── */
+        .footer {
+            margin-top: 32px;
+            text-align: center;
+            font-size: 0.72rem;
+            color: var(--text-dim);
+        }
+
+        .footer b { color: var(--text-muted); }
+
+        @media (max-width: 400px) {
+            .result-number { font-size: 3.5rem; }
+        }
+    </style>
+</head>
+<body>
+
+<div class="page">
+
+    <!-- Header -->
+    <div class="header">
+        <div class="logo-row">
+            <div class="traffic-light-icon">
+                <div class="tl-dot r"></div>
+                <div class="tl-dot y"></div>
+                <div class="tl-dot g"></div>
+            </div>
+            <h1>Fuzzy<span>Light</span></h1>
+        </div>
+        <p class="header-sub">Sistem Kontrol Lampu Lalu Lintas Adaptif</p>
+        <div class="badge-fuzzy">⬡ Mamdani Fuzzy Inference</div>
+    </div>
+
+    <!-- Form -->
+    <form method="POST" action="/" id="fuzzyForm">
+
+        <div class="card">
+            <div class="card-label">▸ Parameter Input</div>
+
+            <!-- Kepadatan -->
+            <div class="input-group">
+                <div class="input-header">
+                    <span class="input-label">Kepadatan Kendaraan</span>
+                    <span class="input-value" id="val-kepadatan">{{ kepadatan }} <small style="font-size:0.6rem; opacity:0.6;">unit/mnt</small></span>
+                </div>
+                <p class="input-desc">Jumlah kendaraan yang melintas per menit (0 – 100)</p>
+                <div class="slider-track">
+                    <input type="range" id="slider-kepadatan" min="0" max="100" step="1"
+                           value="{{ kepadatan }}"
+                           oninput="updateSlider('kepadatan', this.value)">
+                </div>
+                <div class="range-labels"><span>0</span><span>50</span><span>100</span></div>
+                <div class="status-chips">
+                    <span class="chip sepi inactive" id="chip-sepi">Sepi</span>
+                    <span class="chip normal inactive" id="chip-normal">Normal</span>
+                    <span class="chip ramai inactive" id="chip-ramai">Ramai</span>
+                </div>
+                <input type="number" name="kepadatan" id="kepadatan" value="{{ kepadatan }}">
+            </div>
+
+            <!-- Antrean -->
+            <div class="input-group">
+                <div class="input-header">
+                    <span class="input-label">Panjang Antrean</span>
+                    <span class="input-value" id="val-antrean">{{ antrean }} <small style="font-size:0.6rem; opacity:0.6;">meter</small></span>
+                </div>
+                <p class="input-desc">Estimasi panjang antrian kendaraan (0 – 150 m)</p>
+                <div class="slider-track">
+                    <input type="range" id="slider-antrean" min="0" max="150" step="1"
+                           value="{{ antrean }}"
+                           oninput="updateSlider('antrean', this.value)">
+                </div>
+                <div class="range-labels"><span>0</span><span>75</span><span>150m</span></div>
+                <div class="status-chips">
+                    <span class="chip pendek inactive" id="chip-pendek">Pendek</span>
+                    <span class="chip sedang2 inactive" id="chip-sedang2">Sedang</span>
+                    <span class="chip panjang inactive" id="chip-panjang">Panjang</span>
+                </div>
+                <input type="number" name="antrean" id="antrean" value="{{ antrean }}">
+            </div>
+        </div>
+
+        <button type="submit" class="btn-submit">
+            <svg width="16" height="16" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.5"><path stroke-linecap="round" stroke-linejoin="round" d="M13 10V3L4 14h7v7l9-11h-7z"/></svg>
+            Hitung Durasi Lampu Hijau
+        </button>
+
+    </form>
+
+    <!-- Result -->
+    <div class="result-card {% if hasil is not none %}show{% endif %}" id="resultCard">
+        {% if hasil is not none %}
+        {% set pct = (hasil / 60 * 100)|round(1) %}
+        {% set status = 'Cepat' if hasil < 20 else ('Sedang' if hasil < 40 else 'Lama') %}
+        {% set status_color = '#22c55e' if hasil < 20 else ('#eab308' if hasil < 40 else '#ef4444') %}
+        {% set tl_class = 'on-green' if hasil < 20 else ('on-yellow' if hasil < 40 else 'on-red') %}
+        {% endif %}
+
+        <div class="result-top">
+            <span class="result-label-text">▸ Keluaran Sistem</span>
+            {% if hasil is not none %}
+            <span class="result-tag" style="background: {{ status_color }}22; color: {{ status_color }}; border: 1px solid {{ status_color }}44;">
+                {{ status }}
+            </span>
+            {% endif %}
+        </div>
+
+        <div class="result-main">
+            <div style="flex:1;">
+                <div style="font-size:0.75rem; color:var(--text-muted); margin-bottom:6px;">Durasi Lampu Hijau</div>
+                <div class="result-number" style="color: {% if hasil is not none %}{{ status_color }}{% else %}var(--text-dim){% endif %};">
+                    {{ hasil if hasil is not none else '—' }}
+                </div>
+                <div class="result-unit">detik</div>
+            </div>
+            <div class="tl-visual">
+                <div class="tl-big {% if hasil is not none %}{% if tl_class == 'on-red' %}on-red{% else %}off{% endif %}{% else %}off{% endif %}"></div>
+                <div class="tl-big {% if hasil is not none %}{% if tl_class == 'on-yellow' %}on-yellow{% else %}off{% endif %}{% else %}off{% endif %}"></div>
+                <div class="tl-big {% if hasil is not none %}{% if tl_class == 'on-green' %}on-green{% else %}off{% endif %}{% else %}off{% endif %}"></div>
+            </div>
+        </div>
+
+        {% if hasil is not none %}
+        <div class="duration-bar-track">
+            <div class="duration-bar-fill" style="width: {{ pct }}%; background: {{ status_color }};"></div>
+        </div>
+        <div class="result-meta">
+            Durasi <span>{{ hasil }}s</span> dari maks <span>60s</span> &nbsp;·&nbsp;
+            Kepadatan <span>{{ kepadatan }}</span> &nbsp;·&nbsp;
+            Antrean <span>{{ antrean }}m</span>
+        </div>
+        {% endif %}
+    </div>
+
+    <div class="footer">
+        Dibuat dengan <b>scikit-fuzzy</b> · Metode inferensi <b>Mamdani</b> · Defuzzifikasi <b>Centroid</b>
+    </div>
+
+</div>
+
+<script>
+    // Fuzzy membership approximation for chips (client-side)
+    function updateSlider(type, value) {
+        value = parseFloat(value);
+        document.getElementById(type).value = value;
+
+        if (type === 'kepadatan') {
+            const unit = value <= 1 ? 'unit/mnt' : 'unit/mnt';
+            document.getElementById('val-kepadatan').innerHTML = `${value} <small style="font-size:0.6rem;opacity:0.6;">unit/mnt</small>`;
+            // trimf: sepi [0,0,50], normal [25,50,75], ramai [50,100,100]
+            const sepi   = trimf(value, 0, 0, 50);
+            const normal = trimf(value, 25, 50, 75);
+            const ramai  = trimf(value, 50, 100, 100);
+            setChip('sepi', sepi);
+            setChip('normal', normal);
+            setChip('ramai', ramai);
+        } else {
+            document.getElementById('val-antrean').innerHTML = `${value} <small style="font-size:0.6rem;opacity:0.6;">meter</small>`;
+            // trimf: pendek [0,0,75], sedang [40,75,110], panjang [75,150,150]
+            const pendek  = trimf(value, 0, 0, 75);
+            const sedang  = trimf(value, 40, 75, 110);
+            const panjang = trimf(value, 75, 150, 150);
+            setChip('pendek', pendek);
+            setChip('sedang2', sedang);
+            setChip('panjang', panjang);
+        }
+
+        // Update slider fill color
+        const slider = document.getElementById('slider-' + type);
+        const max = parseFloat(slider.max);
+        const pct = (value / max) * 100;
+        slider.style.background = `linear-gradient(to right, #22c55e ${pct}%, #262b3a ${pct}%)`;
+    }
+
+    function trimf(x, a, b, c) {
+        if (x <= a || x >= c) return 0;
+        if (x === b) return 1;
+        if (x < b) return (x - a) / (b - a);
+        return (c - x) / (c - b);
+    }
+
+    function setChip(id, membership) {
+        const chip = document.getElementById('chip-' + id);
+        if (!chip) return;
+        chip.className = chip.className.replace(' active', '').replace(' inactive', '');
+        chip.classList.add(membership > 0.05 ? 'active' : 'inactive');
+        chip.style.opacity = membership > 0.05 ? (0.4 + membership * 0.6).toFixed(2) : '1';
+    }
+
+    // Init on load
+    document.addEventListener('DOMContentLoaded', () => {
+        updateSlider('kepadatan', {{ kepadatan }});
+        updateSlider('antrean', {{ antrean }});
+    });
+</script>
+
+</body>
+</html>
